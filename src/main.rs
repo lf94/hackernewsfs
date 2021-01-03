@@ -32,11 +32,8 @@ mod entries;
 use crate::entries::Entry;
 use crate::entries::Entry::*;
 use crate::walks::walk1_fragment;
-use crate::api::get_items;
-use crate::utils::{
-  DirEntryConfig,
-  FromMode,
-};
+use crate::api::{get_items, get_replies};
+use crate::utils::{DirEntryConfig, FromMode};
 
 #[derive(Clone)]
 pub struct Crumb {
@@ -245,92 +242,91 @@ impl Filesystem for Hackernewsfs {
     // The directory entries must fit within "count" - 100 fit so I'm going with
     // that limit. Better would be to use mem::size_of to calculate it.
     async fn rreaddir(&self, fid: &Fid<Self::Fid>, offset: u64, _count: u32) -> Result<Fcall> {
-      let mut dirs = DirEntryData::new();
       let crumb = fid.aux.crumb.read().await.clone();
 
-      if offset == 0 {
-        dirs = match crumb.entry {
-          ERoot => DirEntryData::with(vec![
-            // DirEntry.offset is SUPER important to set. Otherwise readdir will
-            // continue forever not knowing where it is.
-            DirEntry::from(ETop).offset(0).typ(QidType::DIR),
-            DirEntry::from(ENew).offset(1).typ(QidType::DIR),
-            DirEntry::from(EBest).offset(2).typ(QidType::DIR),
-            DirEntry::from(EAsk).offset(3).typ(QidType::DIR),
-            DirEntry::from(EShow).offset(4).typ(QidType::DIR),
-            DirEntry::from(EJob).offset(5).typ(QidType::DIR),
-          ]),
-          ETop | ENew | EBest | EAsk | EShow | EJob => {
-            let mut ids = get_items(crumb.entry);
-            DirEntryData::with(ids.drain(0..100).enumerate().map(|(index, id)|
-              DirEntry {
-                offset: index as u64,
-                qid: Qid {
-                  typ: QidType::from_mode(crumb.mode),
-                  version: 0,
-                  path: id,
-                },
-                typ: 0,
-                name: format!("{}.{}", index + 1, id),
-            }).collect())
-          },
-          EReplies => {
-            let ids = match crumb.data.clone() {
-              Some(Story(d)) => d.kids,
-              Some(Comment(d)) => d.kids,
-              _ => None
-            }.or(Some(vec![])).unwrap();
-            
-            DirEntryData::with(ids.iter().enumerate().map(|(index, id)|
-              DirEntry {
-                offset: index as u64,
-                qid: Qid {
-                  typ: QidType::from_mode(crumb.mode),
-                  version: 0,
-                  path: (*id) as u64,
-                },
-                typ: 0,
-                name: format!("{}.{}", index + 1, *id),
-            }).collect())
-          },
-          EArticle => {
-            let o = 0;
-            let mut entries = vec![
-              DirEntry::from(ETitle).offset(o),
-              DirEntry::from(EScore).offset(o + 1),
-              DirEntry::from(EUser).offset(o + 1),
-              DirEntry::from(ETime).offset(o + 1),
-            ];
+      let mut dirs = DirEntryData::new();
 
-            match crumb.data {
-              Some(Story(d)) => {
-                if d.url.is_some() {
-                  entries.push(DirEntry::from(EUrl).offset(o + 1));
-                }
-                if d.text.is_some() {
-                  entries.push(DirEntry::from(EText).offset(o + 1));
-                }
-                if d.kids.is_some() {
-                  entries.push(
-                    DirEntry::from(EReplies).offset(o + 1).typ(QidType::DIR)
-                  );
-                }
-              },
-              _ => ()
-            };
-            
-            DirEntryData::with(entries)
-          },
-          EReply => DirEntryData::with(vec![
-            DirEntry::from(EUser).offset(0),
-            DirEntry::from(ETitle).offset(1),
-            DirEntry::from(EText).offset(2),
-            DirEntry::from(ETime).offset(3),
-            DirEntry::from(EReplies).offset(4).typ(QidType::DIR),
-          ]),
-          _ => dirs
-        }
+      if offset > 0 {
+        return Ok(Fcall::Rreaddir { data: dirs })
       }
+
+      dirs = match crumb.entry {
+        ERoot => DirEntryData::with(vec![
+          // DirEntry.offset is SUPER important to set. Otherwise readdir will
+          // continue forever not knowing where it is.
+          DirEntry::from(ETop).offset(0).typ(QidType::DIR),
+          DirEntry::from(ENew).offset(1).typ(QidType::DIR),
+          DirEntry::from(EBest).offset(2).typ(QidType::DIR),
+          DirEntry::from(EAsk).offset(3).typ(QidType::DIR),
+          DirEntry::from(EShow).offset(4).typ(QidType::DIR),
+          DirEntry::from(EJob).offset(5).typ(QidType::DIR),
+        ]),
+        ETop | ENew | EBest | EAsk | EShow | EJob => {
+          let mut ids = get_items(crumb.entry);
+          DirEntryData::with(ids.drain(0..100).enumerate().map(|(index, id)|
+            DirEntry {
+              offset: index as u64,
+              qid: Qid {
+                typ: QidType::from_mode(crumb.mode),
+                version: 0,
+                path: id,
+              },
+              typ: 0,
+              name: format!("{}.{}", index + 1, id),
+          }).collect())
+        },
+        EReplies => {
+          let ids = get_replies(crumb.clone().data);
+          
+          DirEntryData::with(ids.iter().enumerate().map(|(index, id)|
+            DirEntry {
+              offset: index as u64,
+              qid: Qid {
+                typ: QidType::from_mode(crumb.mode),
+                version: 0,
+                path: (*id) as u64,
+              },
+              typ: 0,
+              name: format!("{}.{}", index + 1, *id),
+          }).collect())
+        },
+        EArticle => {
+          let o = 0;
+          let mut entries = vec![
+            DirEntry::from(ETitle).offset(o),
+            DirEntry::from(EScore).offset(o + 1),
+            DirEntry::from(EUser).offset(o + 1),
+            DirEntry::from(ETime).offset(o + 1),
+          ];
+
+          match crumb.data {
+            Some(Story(d)) => {
+              if d.url.is_some() {
+                entries.push(DirEntry::from(EUrl).offset(o + 1));
+              }
+              if d.text.is_some() {
+                entries.push(DirEntry::from(EText).offset(o + 1));
+              }
+              if d.kids.is_some() {
+                entries.push(
+                  DirEntry::from(EReplies).offset(o + 1).typ(QidType::DIR)
+                );
+              }
+            },
+            _ => ()
+          };
+          
+          DirEntryData::with(entries)
+        },
+        EReply => DirEntryData::with(vec![
+          DirEntry::from(EUser).offset(0),
+          DirEntry::from(ETitle).offset(1),
+          DirEntry::from(EText).offset(2),
+          DirEntry::from(ETime).offset(3),
+          DirEntry::from(EReplies).offset(4).typ(QidType::DIR),
+        ]),
+        _ => dirs,
+      };
 
       Ok(Fcall::Rreaddir { data: dirs })
     }

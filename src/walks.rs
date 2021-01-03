@@ -10,11 +10,13 @@ pub fn walk1_category(part: &str, crumb: Crumb) -> Option<Crumb> {
   let returned = get_items(crumb.entry);
   for id in returned.iter() {
     if realpart == id.to_string() {
+      let data = get_item(*id);
+      
       return Some(Crumb {
         entry: EArticle,
         qpath: (*id) as u64,
         mode: S_IFDIR | 0o555,
-        data: None,
+        data, 
       });
     }
   }
@@ -27,11 +29,13 @@ pub fn walk1_replies(part: &str, crumb: Crumb) -> Option<Crumb> {
   
   for id in replies.iter() {
     if tid == id.to_string() {
+      let data = get_item(*id as u64);
+      
       return Some(Crumb {
         entry: EReply,
         qpath: (*id) as u64,
         mode: S_IFDIR | 0o555,
-        data: None,
+        data,
       });
     }
   }
@@ -57,8 +61,8 @@ pub fn walk1_fragment(
     EReplies =>
       walk1_replies(fragment, crumb),
     EArticle => {
-      let data = get_item(crumb.qpath);
-      
+      let data = crumb.data;
+
       match fragment {
         "id" => Some(Crumb {
           entry: EId,
@@ -112,7 +116,7 @@ pub fn walk1_fragment(
       }
     },
     EReply => {
-      let data = get_item(crumb.qpath);
+      let data = crumb.data;
       
       match fragment {
         "id" => Some(Crumb {
