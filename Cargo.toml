@@ -1,0 +1,24 @@
+[package]
+name = "hackernewsfs"
+version = "0.0.1"
+authors = [ "lf94 <inbox@leefallat.ca>" ]
+edition = "2018"
+
+[[bin]]
+name = "hackernewsfs"
+
+[dependencies]
+lazy_static = "1.4.0"
+reqwest = { version = "0.10", features = ["json"] }
+libc = "0.2.81"
+env_logger = "0.7"
+filetime = "0.2"
+tokio = { version = "0.2.21", features = ["full"] }
+async-trait = "0.1.33"
+futures = "0.3.5"
+
+[dependencies.hn_api]
+path = "/home/lee/Code/Others/hn_api"
+
+[dependencies.rust-9p]
+path = "/home/lee/Code/Others/rust-9p/"
